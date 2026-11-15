@@ -1,4 +1,4 @@
-name: Build Offline EXE (single file)
+name: Build Offline EXE (dari zip)
 
 on:
   workflow_dispatch:
@@ -13,6 +13,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Extract source zip
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Path . -Filter *.zip -File | Select-Object -First 1
+          if (-not $zip) { throw "Tidak ada file .zip di root repo" }
+          Write-Host "Mengekstrak $($zip.Name)"
+          Expand-Archive -Path $zip.FullName -DestinationPath src -Force
+          $main = Get-ChildItem -Path src -Recurse -Filter main.py | Select-Object -First 1
+          if (-not $main) { throw "main.py tidak ditemukan di dalam zip" }
+          "SRC_DIR=$($main.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -24,9 +35,11 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install dependencies
+        working-directory: ${{ env.SRC_DIR }}
         run: pip install -r requirements.txt
 
       - name: Build single EXE
+        working-directory: ${{ env.SRC_DIR }}
         run: >
           pyinstaller --noconfirm --onefile --noconsole
           --name FotoKartunOffline
@@ -52,11 +65,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FotoKartunOffline
-          path: dist/FotoKartunOffline.exe
+          path: ${{ env.SRC_DIR }}/dist/FotoKartunOffline.exe
 
       - name: Publish release (exe langsung, tanpa zip)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: Foto Kartun Offline build ${{ github.run_number }}
-          files: dist/FotoKartunOffline.exe
+          files: ${{ env.SRC_DIR }}/dist/FotoKartunOffline.exe
